@@ -1,22 +1,27 @@
 import json
 import boto3
+import os
+import logging
 
-sqs = boto3.client(
-    "sqs",
-    endpoint_url="http://localstack:4566",
-    region_name="us-east-1",
-    aws_access_key_id="test",
-    aws_secret_access_key="test"
-)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-QUEUE_URL = "http://localstack:4566/000000000000/my_queue"
+localstack_host = os.environ.get('LOCALSTACK_HOSTNAME', 'localhost.localstack.cloud')
+endpoint = f"http://{localstack_host}:4566"
+
+sqs = boto3.client("sqs", endpoint_url=endpoint, region_name="us-east-1")
+
 
 def handler(event, context):
-    print("lambda_a triggered")
+    logger.debug("lambda_a triggered")
+
+    response = sqs.get_queue_url(QueueName="my_queue")
+    queue_url = response['QueueUrl']
 
     sqs.send_message(
-        QueueUrl=QUEUE_URL,
+        QueueUrl=queue_url,
         MessageBody=json.dumps({"msg": "hello from lambda_a"})
     )
 
+    logger.debug("message sent")
     return {"status": "sent"}

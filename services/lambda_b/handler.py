@@ -1,7 +1,7 @@
 import json
 
 def handler(event, context):
-    print("lambda_b received event:")
-    print(json.dumps(event))
+    event = json.dumps(event)
+    print(f"Lambda b received event: {event}")
 
     return {"status": "processed"}
