@@ -7,11 +7,8 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3,dynamodb,lambda,sqs
-      - DEBUG=1
+      - SERVICES=s3,dynamodb,lambda,sqs,logs
       - AWS_DEFAULT_REGION=us-east-1
-      # - LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT=1
-      # - LAMBDA_DOCKER_FLAGS=-e DOCKER_LAMBDA_USE_STORED_IMAGES=1
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - "./localstack/init:/etc/localstack/init/ready.d"

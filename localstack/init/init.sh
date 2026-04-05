@@ -14,15 +14,12 @@ awslocal sqs create-queue --queue-name my_queue
 # =======================
 echo "Packaging lambda_a..."
 
-LAMBDA_A_SRC="/var/task/services/lambda_a/handler.py"
+LAMBDA_A_DIR="/var/task/services/lambda_a"
 LAMBDA_A_ZIP="/tmp/lambda_a.zip"
 
-if [ ! -f "$LAMBDA_A_SRC" ]; then
-  echo "ERROR: lambda_a handler not found at $LAMBDA_A_SRC"
-  exit 1
-fi
-
-zip -j "$LAMBDA_A_ZIP" "$LAMBDA_A_SRC"
+rm -f "$LAMBDA_A_ZIP"
+cd "$LAMBDA_A_DIR"
+zip -r "$LAMBDA_A_ZIP" .
 
 echo "Creating lambda_a..."
 awslocal lambda create-function \
@@ -37,15 +34,12 @@ awslocal lambda create-function \
 # =======================
 echo "Packaging lambda_b..."
 
-LAMBDA_B_SRC="/var/task/services/lambda_b/handler.py"
+LAMBDA_B_DIR="/var/task/services/lambda_b"
 LAMBDA_B_ZIP="/tmp/lambda_b.zip"
 
-if [ ! -f "$LAMBDA_B_SRC" ]; then
-  echo "ERROR: lambda_b handler not found at $LAMBDA_B_SRC"
-  exit 1
-fi
-
-zip -j "$LAMBDA_B_ZIP" "$LAMBDA_B_SRC"
+rm -f "$LAMBDA_B_ZIP"
+cd "$LAMBDA_B_DIR"
+zip -r "$LAMBDA_B_ZIP" .
 
 echo "Creating lambda_b..."
 awslocal lambda create-function \
@@ -76,6 +70,7 @@ fi
 awslocal lambda create-event-source-mapping \
   --function-name lambda_b \
   --batch-size 1 \
+  --maximum-retry-attempts 0 \
   --event-source-arn "$QUEUE_ARN"
 
 echo "===== INIT DONE SUCCESSFULLY ====="

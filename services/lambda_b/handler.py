@@ -1,7 +1,18 @@
 import json
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 
 def handler(event, context):
-    event = json.dumps(event)
-    print(f"Lambda b received event: {event}")
+    logger.info(f"Lambda b received event: {json.dumps(event)}")
 
-    return {"status": "processed"}
+    for record in event.get("Records", []):
+        body = json.loads(record.get("body", "{}"))
+
+        logger.info(f"Processing message: {body}")
+
+    return {
+        "statusCode": 200
+    }
