@@ -3,6 +3,8 @@ set -e
 
 echo "===== START LOCALSTACK INIT ====="
 
+cd /var/task
+
 echo "Listing mounted directory:"
 ls -R /var/task || true
 
@@ -10,44 +12,76 @@ echo "Creating SQS queue..."
 awslocal sqs create-queue --queue-name my_queue
 
 # =======================
-# LAMBDA A
+# COMMON SETUP
+# =======================
+touch common/__init__.py
+touch services/__init__.py
+touch services/lambda_a/__init__.py
+touch services/lambda_b/__init__.py
+
+# =======================
+# BUILD LAMBDA A
 # =======================
 echo "Packaging lambda_a..."
 
-LAMBDA_A_DIR="/var/task/services/lambda_a"
-LAMBDA_A_ZIP="/tmp/lambda_a.zip"
+BUILD_A="/tmp/build_lambda_a"
+rm -rf $BUILD_A
+mkdir -p $BUILD_A/services/lambda_a
 
-rm -f "$LAMBDA_A_ZIP"
-cd "$LAMBDA_A_DIR"
-zip -r "$LAMBDA_A_ZIP" .
+echo "Installing dependencies for lambda_a..."
+pip install -r /var/task/services/lambda_a/requirements.txt -t $BUILD_A/
+
+cp -r /var/task/common $BUILD_A/
+cp /var/task/services/__init__.py $BUILD_A/services/
+cp -r /var/task/services/lambda_a/. $BUILD_A/services/lambda_a/ 
+
+touch $BUILD_A/services/__init__.py
+touch $BUILD_A/services/lambda_a/__init__.py
+
+cd $BUILD_A
+zip -r /tmp/lambda_a.zip .
 
 echo "Creating lambda_a..."
 awslocal lambda create-function \
   --function-name lambda_a \
   --runtime python3.10 \
-  --handler handler.handler \
-  --zip-file fileb://"$LAMBDA_A_ZIP" \
-  --role arn:aws:iam::000000000000:role/lambda-role
+  --handler services.lambda_a.handler.handler \
+  --zip-file fileb:///tmp/lambda_a.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role \
+  --environment "Variables={PYTHONPATH=.}"
+
+cd /var/task
 
 # =======================
-# LAMBDA B
+# BUILD LAMBDA B
 # =======================
 echo "Packaging lambda_b..."
 
-LAMBDA_B_DIR="/var/task/services/lambda_b"
-LAMBDA_B_ZIP="/tmp/lambda_b.zip"
+BUILD_B="/tmp/build_lambda_b"
+rm -rf $BUILD_B
+mkdir -p $BUILD_B/services/lambda_b
 
-rm -f "$LAMBDA_B_ZIP"
-cd "$LAMBDA_B_DIR"
-zip -r "$LAMBDA_B_ZIP" .
+echo "Installing dependencies for lambda_b..."
+pip install -r /var/task/services/lambda_b/requirements.txt -t $BUILD_B/
+
+cp -r /var/task/common $BUILD_B/
+cp /var/task/services/__init__.py $BUILD_B/services/
+cp -r /var/task/services/lambda_b/. $BUILD_B/services/lambda_b/
+
+touch $BUILD_B/services/__init__.py
+touch $BUILD_B/services/lambda_b/__init__.py
+
+cd $BUILD_B
+zip -r /tmp/lambda_b.zip .
 
 echo "Creating lambda_b..."
 awslocal lambda create-function \
   --function-name lambda_b \
   --runtime python3.10 \
-  --handler handler.handler \
-  --zip-file fileb://"$LAMBDA_B_ZIP" \
-  --role arn:aws:iam::000000000000:role/lambda-role
+  --handler services.lambda_b.handler.handler \
+  --zip-file fileb:///tmp/lambda_b.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role \
+  --environment "Variables={PYTHONPATH=.}"
 
 # =======================
 # SQS → Lambda mapping

@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   localstack:
@@ -11,6 +11,12 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
-      - "./localstack/init:/etc/localstack/init/ready.d"
-      - "./services:/var/task/services"
+      - .:/var/task
       - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack/init:/etc/localstack/init/ready.d"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    ports:
+      - "16686:16686"
+      - "4318:4318"
