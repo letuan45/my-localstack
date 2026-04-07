@@ -1,16 +1,8 @@
 import json
-import logging
 
 from common.otel import init_tracer
-from common.tracing import traced_lambda
-from common import local_http
-from common.log_handler import OtelLogHandler
-
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-logger.addHandler(OtelLogHandler())
+from common.tracing import traced_lambda, traced_record
+from services.lambda_b.config import logger
 
 tracer = init_tracer("lambda_b")
 
@@ -18,11 +10,17 @@ tracer = init_tracer("lambda_b")
 @traced_lambda
 def handler(event, context):
     logger.info(f"Lambda b received event: {json.dumps(event)}")
+    records = event.get("Records", [])
 
-    for record in event.get("Records", []):
-        body = json.loads(record.get("body", "{}"))
+    for record in records:
+        with traced_record(record):
+            if 'Sns' in record:
+                raw_data = record['Sns'].get('Message', '{}')
+            else:
+                raw_data = record.get('body', '{}')
 
-        logger.info(f"Processing message: {body}")
+            body = json.loads(raw_data)
+            logger.info(f"Processing message: {body}")
 
     return {
         "statusCode": 200

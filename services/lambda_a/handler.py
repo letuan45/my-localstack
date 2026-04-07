@@ -1,60 +1,39 @@
 import json
-import boto3
-import os
-import logging
 
 from common.otel import init_tracer
 from common.tracing import traced_lambda
-from common import local_http
-from common.log_handler import OtelLogHandler
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-logger.addHandler(OtelLogHandler())
-
-localstack_host = os.environ.get(
-    'LOCALSTACK_HOSTNAME', 'localhost.localstack.cloud')
-endpoint = f"http://{localstack_host}:4566"
-
-sqs = boto3.client("sqs", endpoint_url=endpoint, region_name="us-east-1")
+# from utils import send_message
+# from config import logger, sqs
+from services.lambda_a.utils import send_message
+from services.lambda_a.config import logger, sqs, sns
 
 tracer = init_tracer("lambda_a")
-
-
-def send_message(queue_url: str, message_body: dict):
-    """
-    Helper function to send message to SQS queue.
-    """
-    from common.inject import inject_trace
-    carrier = inject_trace()
-
-    sqs.send_message(
-        QueueUrl=queue_url,
-        MessageBody=json.dumps(message_body),
-        MessageAttributes={
-            'traceparent': {
-                'DataType': 'String',
-                'StringValue': carrier.get('traceparent', '')
-            }
-        }
-    )
-
 
 @traced_lambda
 def handler(event, context):
     logger.info(f"lambda_a triggered with event: {json.dumps(event)}")
 
-    response = sqs.get_queue_url(QueueName="my_queue")
-    queue_url = response['QueueUrl']
+    # response = sqs.get_queue_url(QueueName="my_queue")
+    # queue_url = response['QueueUrl']
+    target_arn = "arn:aws:sns:us-east-1:000000000000:my_topic"
 
-    message_payload = event if event else {"info": "no data received"}
+    if not event:
+        logger.warning("Received empty event, sending default message")
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"message": "No event data received"})
+        }
 
-    send_message(queue_url, message_payload)
+    message_payload = event
 
-    logger.info("message sent")
+    # send_message(message_payload, queue_url)
+    send_message(message_payload, target_arn)
 
+    logger.info(f"message sent to target successfully {target_arn}")
+    # logger.info(f"message sent to target successfully {queue_url}")
     logger.error("This is a test error log")
+
     return {
         "statusCode": 200
     }
