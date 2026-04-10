@@ -18,17 +18,6 @@ def extract_carrier(event):
     return {}
 
 
-# def get_context_from_record(record):
-#     """Get context from a single SQS record"""
-#     try:
-#         attrs = record.get("messageAttributes", {})
-#         if "traceparent" in attrs:
-#             carrier = {"traceparent": attrs["traceparent"]["stringValue"]}
-#             return propagate.extract(carrier)
-#     except Exception as e:
-#         print(f"Failed to extract context from record: {e}")
-#     return None
-
 def get_context_from_record(record):
     try:
         if 'Sns' in record:
@@ -44,28 +33,6 @@ def get_context_from_record(record):
         print(f"Tracing extraction failed: {e}")
     return None
 
-
-# def traced_lambda(handler_func):
-
-#     def wrapper(event, context):
-#         carrier = extract_carrier(event)
-#         parent_context = extract(carrier)
-
-#         with tracer.start_as_current_span(
-#             name=f"lambda_handler:{handler_func.__name__}",
-#             context=parent_context
-#         ) as span:
-#             span.set_attribute("faas.name", context.function_name)
-#             span.set_attribute("faas.invocation_id", context.aws_request_id)
-
-#             result = handler_func(event, context)
-
-#             provider = trace.get_tracer_provider()
-#             if isinstance(provider, SDKTracerProvider):
-#                 provider.force_flush()
-
-#             return result
-#     return wrapper
 
 def traced_lambda(handler_func):
     def wrapper(event, context):

@@ -26,8 +26,3 @@ def init_tracer(service_name: str):
     BotocoreInstrumentor().instrument()
 
     return trace.get_tracer(service_name)
-
-# def flush_telemetry():
-#     provider = trace.get_tracer_provider()
-#     if hasattr(provider, 'force_flush'):
-#         provider.force_flush()

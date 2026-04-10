@@ -3,5 +3,5 @@ from common.log_handler import OtelLogHandler
 
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(OtelLogHandler())

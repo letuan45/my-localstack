@@ -9,18 +9,22 @@ tracer = init_tracer("lambda_b")
 
 @traced_lambda
 def handler(event, context):
-    logger.info(f"Lambda b received event: {json.dumps(event)}")
+    logger.debug(f"Lambda b received event: {json.dumps(event)}")
     records = event.get("Records", [])
 
     for record in records:
-        with traced_record(record):
+        with traced_record(record) as span:
             if 'Sns' in record:
                 raw_data = record['Sns'].get('Message', '{}')
             else:
                 raw_data = record.get('body', '{}')
 
             body = json.loads(raw_data)
-            logger.info(f"Processing message: {body}")
+
+            device_imeis = body.get("device_imeis", [])
+            span.set_attribute("device_imeis", device_imeis)
+
+            logger.debug(f"Processing message: {body}")
 
     return {
         "statusCode": 200
