@@ -1,6 +1,8 @@
 from opentelemetry import trace, propagate
-from opentelemetry.propagate import extract
+# from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+from opentelemetry._logs import get_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider as SDKLoggerProvider
 
 tracer = trace.get_tracer(__name__)
 
@@ -40,15 +42,19 @@ def traced_lambda(handler_func):
         with tracer.start_as_current_span(
             name=f"lambda_handler:{handler_func.__name__}"
         ) as span:
-            span.set_attribute("faas.name", context.function_name)
-            span.set_attribute("faas.invocation_id", context.aws_request_id)
+            span.set_attribute("faas.name", getattr(context, 'function_name', 'unknown_function'))
+            span.set_attribute("faas.invocation_id", getattr(context, 'aws_request_id', 'unknown_id'))
 
             result = handler_func(event, context)
 
-            # Force flush data to Jaeger
-            provider = trace.get_tracer_provider()
-            if isinstance(provider, SDKTracerProvider):
-                provider.force_flush()
+            # 1. Force flush TRACE data
+            trace_provider = trace.get_tracer_provider()
+            if isinstance(trace_provider, SDKTracerProvider):
+                trace_provider.force_flush()
+
+            log_provider = get_logger_provider()
+            if isinstance(log_provider, SDKLoggerProvider):
+                log_provider.force_flush()
 
             return result
     return wrapper

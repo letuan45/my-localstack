@@ -1,0 +1,19 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317 # Nhận Trace từ OTel Collector qua gRPC
+        http:
+          endpoint: 0.0.0.0:4318
+
+storage:
+  trace:
+    backend: local # Lưu trace vào ổ đĩa cục bộ của container
+    local:
+      path: /tmp/tempo/blocks
+    wal:
+      path: /tmp/tempo/wal

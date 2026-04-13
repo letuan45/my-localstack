@@ -22,7 +22,8 @@ def handler(event, context):
     # Simulate processing the event and sending a message to the next service
     device_imeis = ["351756051523999", "351756051523998"]
     current_span = trace.get_current_span()
-    current_span.set_attribute("device_imeis", device_imeis)
+    # current_span.set_attribute("device_imeis", device_imeis)
+    current_span.set_attribute("device_imeis", json.dumps(device_imeis))
 
     if not event:
         logger.warning("Received empty event, sending default message")

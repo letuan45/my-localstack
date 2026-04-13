@@ -1,7 +1,10 @@
 import logging
-from common.log_handler import OtelLogHandler
+from common.log_handler import get_otel_log_handler
 
+SERVICE_NAME = "lambda_c"
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
-logger.addHandler(OtelLogHandler())
+
+if not logger.handlers:
+    logger.addHandler(get_otel_log_handler(SERVICE_NAME))
