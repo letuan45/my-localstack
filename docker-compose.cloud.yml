@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  localstack:
+    container_name: localstack
+    image: localstack/localstack:3.4.0
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,dynamodb,lambda,sqs,sns,logs
+      - AWS_DEFAULT_REGION=us-east-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LAMBDA_DOCKER_FLAGS=-e GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID} -e GRAFANA_API_TOKEN=${GRAFANA_API_TOKEN} -e GRAFANA_OTLP_ENDPOINT=${GRAFANA_OTLP_ENDPOINT}
+    volumes:
+      - .:/var/task
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack/init:/etc/localstack/init/ready.d"

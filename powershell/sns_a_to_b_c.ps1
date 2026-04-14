@@ -4,6 +4,20 @@ $LogGroups = @{
     "lambda_c" = "/aws/lambda/lambda_c"
 }
 
+# ==============================
+# 🧹 Clean logs folder
+# ==============================
+
+$logDir = "./logs"
+
+if (Test-Path $logDir) {
+    Write-Host "Cleaning old logs..."
+    Remove-Item "$logDir/*.log" -Force -ErrorAction SilentlyContinue
+} else {
+    Write-Host "Creating logs folder..."
+    New-Item -ItemType Directory -Path $logDir | Out-Null
+}
+
 $payloadObj = @{
     device_id = "SNS_FANOUT_TEST"
     imei      = "999999"
