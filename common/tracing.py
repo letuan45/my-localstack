@@ -41,15 +41,9 @@ def traced_lambda(logger=None):
             links = []
             records = event.get("Records", [])
 
-            if logger:
-                logger.debug(f"[Tracing] Received event with {len(records)} records.")
-
             if records:
                 if len(records) == 1:
                     parent_ctx = extract_trace_context(records[0])
-                    if logger:
-                        status = "Success" if parent_ctx else "Failed (Traceparent not found)"
-                        logger.debug(f"[Tracing] Single-Record Strategy. Extracting Parent Context: {status}")
                 else:
                     for record in records:
                         ctx = extract_trace_context(record)
@@ -57,12 +51,6 @@ def traced_lambda(logger=None):
                             span_ctx = trace.get_current_span(ctx).get_span_context()
                             if span_ctx.is_valid:
                                 links.append(trace.Link(span_ctx))
-
-                    if logger:
-                        logger.debug(f"[Tracing] Batch-Records Strategy. Successfully extracted {len(links)}/{len(records)} Span Links.")
-            else:
-                if logger:
-                    logger.debug("[Tracing] No records found in event. Starting span without parent context.")
 
             with tracer.start_as_current_span(
                 name=f"lambda_handler:{handler_func.__name__}",
@@ -81,7 +69,6 @@ def traced_lambda(logger=None):
                     trace_id = f"{span_context.trace_id:032x}" if span_context.is_valid else "None"
                     span_id = f"{span_context.span_id:016x}" if span_context.is_valid else "None"
                     logger.append_keys(trace_id=trace_id, span_id=span_id)
-                    logger.debug(f"[Tracing] Starting handler with trace_id: {trace_id}")
                 try:
                     return handler_func(event, context)
                 finally:

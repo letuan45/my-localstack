@@ -4,10 +4,14 @@ $LogGroups = @{
     "lambda_c" = "/aws/lambda/lambda_c"
 }
 
+$env:PYTHONWARNINGS = "ignore:Unverified HTTPS request"
+$env:AWS_CA_BUNDLE = $null
+$env:PYTHONWARNINGS = "ignore"
+$env:AWS_EXECUTION_ENV = "localstack"
+
 # ==============================
 # 🧹 Clean logs folder
 # ==============================
-
 $logDir = "./logs"
 
 if (Test-Path $logDir) {
@@ -18,9 +22,15 @@ if (Test-Path $logDir) {
     New-Item -ItemType Directory -Path $logDir | Out-Null
 }
 
+# ==============================
+# 📦 PREPARE PAYLOAD FOR LAMBDA A
+# ==============================
 $payloadObj = @{
-    device_id = "SNS_FANOUT_TEST"
-    imei      = "999999"
+    target_destination = "arn:aws:sns:us-east-1:000000000000:my_topic"
+    simulate_batch     = $false
+
+    device_id = "000001"
+    device_imeis = @("999999", "888888")
     tenant_id = "/prod"
 }
 
@@ -30,8 +40,11 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 Write-Host "--- TRACING SNS FAN-OUT ---"
 Write-Host "Invoking lambda_a to publish to SNS Topic..."
+Write-Host "Payload: $payloadJson"
 
-# Gọi lambda_a
+# ==============================
+# 🚀 INVOKE LAMBDA A
+# ==============================
 awslocal lambda invoke `
     --function-name lambda_a `
     --no-verify-ssl `
@@ -41,7 +54,9 @@ awslocal lambda invoke `
 Write-Host "Waiting for SNS to fan-out to B and C (20s)..."
 Start-Sleep -Seconds 20
 
-# Fetch logs cho cả 3 Lambda
+# ==============================
+# 📝 FETCH LOGS
+# ==============================
 foreach ($name in $LogGroups.Keys) {
     $LogGroup = $LogGroups[$name]
     $StartTime = [DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
@@ -52,5 +67,7 @@ foreach ($name in $LogGroups.Keys) {
     if ($response.events.Count -gt 0) {
         $response.events.message | Out-File -FilePath "./logs/$name.log" -Append
         Write-Host "Done: $name"
+    } else {
+        Write-Host "No logs found for $name"
     }
 }

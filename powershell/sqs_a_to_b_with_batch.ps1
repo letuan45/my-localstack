@@ -11,7 +11,6 @@ $env:AWS_EXECUTION_ENV = "localstack"
 # ==============================
 # 🧹 Clean logs folder
 # ==============================
-
 $logDir = "./logs"
 
 if (Test-Path $logDir) {
@@ -22,41 +21,46 @@ if (Test-Path $logDir) {
     New-Item -ItemType Directory -Path $logDir | Out-Null
 }
 
-if (!(Test-Path $LogDir)) {
-    New-Item -ItemType Directory -Path $LogDir | Out-Null
+Write-Host "--- STARTING SQS BATCH TEST ---"
+
+# ==============================
+# 📦 PAYLOAD TO LAMBDA A
+# ==============================
+$payloadObj = @{
+    target_destination = "http://localhost:4566/000000000000/my_queue"
+    simulate_batch     = $true
+    devices            = @(
+        @{ device_id = "DEV_001"; device_imeis = @("111", "222") },
+        @{ device_id = "DEV_002"; device_imeis = @("333") },
+        @{ device_id = "DEV_003"; device_imeis = @("444", "555") }
+    )
 }
 
-$devices = @(
-    @{ device_id = "DEV_001"; imei = "111"; tenant_id = "/test1" },
-    @{ device_id = "DEV_002"; imei = "222"; tenant_id = "/test2" },
-    @{ device_id = "DEV_003"; imei = "333"; tenant_id = "/test3" }
-)
+$payloadJson = $payloadObj | ConvertTo-Json -Depth 3 -Compress
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllLines("$(Get-Location)/input.json", $payloadJson, $utf8NoBom)
 
-Write-Host "--- STARTING BATCH TEST ---"
+Write-Host "Invoking lambda_a to simulate SQS batch..."
+Write-Host "Payload: $payloadJson"
 
-foreach ($dev in $devices) {
-    $payloadJson = $dev | ConvertTo-Json -Compress
+# ==============================
+# 🚀 INVOKE LAMBDA A
+# ==============================
+awslocal lambda invoke `
+    --function-name lambda_a `
+    --no-verify-ssl `
+    --payload fileb://input.json `
+    out.json | Out-Null
 
-    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-    [System.IO.File]::WriteAllLines("$(Get-Location)/input.json", $payloadJson, $utf8NoBom)
-
-    Write-Host "Invoking lambda_a for device: $($dev.device_id)"
-
-    awslocal lambda invoke `
-        --function-name lambda_a `
-        --no-verify-ssl `
-        --payload fileb://input.json `
-        out.json | Out-Null
-}
-
-Write-Host "Waiting for SQS Batching Window (10s)..."
+Write-Host "Waiting for SQS Batching Window to trigger Lambda B (12s)..."
 Start-Sleep -Seconds 12
 
+# ==============================
+# 📝 FETCH LOGS
+# ==============================
 foreach ($name in $LogGroups.Keys) {
-
     $LogGroup = $LogGroups[$name]
     $OutputFile = "$LogDir/$name.log"
-
     $StartTime = [DateTimeOffset]::UtcNow.AddSeconds(-60).ToUnixTimeMilliseconds()
 
     Write-Host "Fetching logs for $name..."
@@ -71,7 +75,6 @@ foreach ($name in $LogGroups.Keys) {
         foreach ($event in $response.events) {
             $event.message | Out-File -FilePath $OutputFile -Append
         }
-
         Write-Host "Updated $name logs"
     } else {
         Write-Host "No new logs for $name"

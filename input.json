@@ -1,1 +1,1 @@
-{"device_id":"SNS_FANOUT_TEST","tenant_id":"/prod","imei":"999999"}
+{"devices":[{"device_imeis":["111","222"],"device_id":"DEV_001"},{"device_imeis":["333"],"device_id":"DEV_002"},{"device_imeis":["444","555"],"device_id":"DEV_003"}],"target_destination":"http://localhost:4566/000000000000/my_queue","simulate_batch":true}
