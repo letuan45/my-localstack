@@ -13,9 +13,6 @@ def init_tracer(service_name: str):
     api_token = os.environ.get("GRAFANA_API_TOKEN", "")
     endpoint_base = os.environ.get("GRAFANA_OTLP_ENDPOINT", "")
 
-    if instance_id and api_token and endpoint_base:
-        print("Using Grafana Cloud OTLP endpoint for tracing")
-
     if instance_id and api_token:
         auth_string = f"{instance_id}:{api_token}"
         encoded_auth = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")

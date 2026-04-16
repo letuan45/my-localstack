@@ -1,71 +1,96 @@
+from functools import wraps
+import json
+
 from opentelemetry import trace, propagate
-# from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
-from opentelemetry._logs import get_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider as SDKLoggerProvider
+from common.log_handler import flush_otel_logs
 
 tracer = trace.get_tracer(__name__)
 
 
-def extract_carrier(event):
+def extract_trace_context(record):
     try:
-        if "Records" in event:
-            record = event["Records"][0]
-            attrs = record.get("messageAttributes", {})
+        traceparent = None
 
-            if "traceparent" in attrs:
-                return {"traceparent": attrs["traceparent"]["stringValue"]}
-    except Exception as e:
-        print(f"No trace context found in event: {e}")
-    return {}
-
-
-def get_context_from_record(record):
-    try:
         if 'Sns' in record:
-            attrs = record['Sns'].get('MessageAttributes', {})
-            traceparent = attrs.get('traceparent', {}).get('Value')
-            return propagate.extract({'traceparent': traceparent})
-
+            traceparent = record['Sns'].get('MessageAttributes', {}).get('traceparent', {}).get('Value')
         elif 'messageAttributes' in record:
-            attrs = record.get("messageAttributes", {})
-            traceparent = attrs.get("traceparent", {}).get("stringValue")
+            traceparent = record.get("messageAttributes", {}).get("traceparent", {}).get("stringValue")
+
+            if not traceparent and 'body' in record:
+                try:
+                    body = json.loads(record['body'])
+                    if isinstance(body, dict) and body.get('Type') == 'Notification':
+                        traceparent = body.get('MessageAttributes', {}).get('traceparent', {}).get('Value')
+                except json.JSONDecodeError:
+                    pass
+
+        if traceparent:
             return propagate.extract({'traceparent': traceparent})
     except Exception as e:
         print(f"Tracing extraction failed: {e}")
     return None
 
 
-def traced_lambda(handler_func):
-    def wrapper(event, context):
-        # Create a new span for the Lambda invocation
-        with tracer.start_as_current_span(
-            name=f"lambda_handler:{handler_func.__name__}"
-        ) as span:
-            span.set_attribute("faas.name", getattr(context, 'function_name', 'unknown_function'))
-            span.set_attribute("faas.invocation_id", getattr(context, 'aws_request_id', 'unknown_id'))
+def traced_lambda(logger=None):
+    def decorator(handler_func):
+        @wraps(handler_func)
+        def wrapper(event, context):
+            # 1. Create the Root Span
+            parent_ctx = None
+            links = []
+            records = event.get("Records", [])
 
-            result = handler_func(event, context)
+            if logger:
+                logger.debug(f"[Tracing] Received event with {len(records)} records.")
 
-            # 1. Force flush TRACE data
-            trace_provider = trace.get_tracer_provider()
-            if isinstance(trace_provider, SDKTracerProvider):
-                trace_provider.force_flush()
+            if records:
+                if len(records) == 1:
+                    parent_ctx = extract_trace_context(records[0])
+                    if logger:
+                        status = "Success" if parent_ctx else "Failed (Traceparent not found)"
+                        logger.debug(f"[Tracing] Single-Record Strategy. Extracting Parent Context: {status}")
+                else:
+                    for record in records:
+                        ctx = extract_trace_context(record)
+                        if ctx:
+                            span_ctx = trace.get_current_span(ctx).get_span_context()
+                            if span_ctx.is_valid:
+                                links.append(trace.Link(span_ctx))
 
-            log_provider = get_logger_provider()
-            if isinstance(log_provider, SDKLoggerProvider):
-                log_provider.force_flush()
+                    if logger:
+                        logger.debug(f"[Tracing] Batch-Records Strategy. Successfully extracted {len(links)}/{len(records)} Span Links.")
+            else:
+                if logger:
+                    logger.debug("[Tracing] No records found in event. Starting span without parent context.")
 
-            return result
-    return wrapper
+            with tracer.start_as_current_span(
+                name=f"lambda_handler:{handler_func.__name__}",
+                context=parent_ctx,
+                links=links if links else None,
+                kind=trace.SpanKind.CONSUMER if records else trace.SpanKind.SERVER
+            ) as span:
+                span.set_attribute("faas.name", getattr(context, 'function_name', 'unknown_function'))
+                span.set_attribute("faas.invocation_id", getattr(context, 'aws_request_id', 'unknown_id'))
+                if records:
+                    span.set_attribute("messaging.batch.message_count", len(records))
 
+                # Append trace_id and span_id to logger if available
+                if logger:
+                    span_context = span.get_span_context()
+                    trace_id = f"{span_context.trace_id:032x}" if span_context.is_valid else "None"
+                    span_id = f"{span_context.span_id:016x}" if span_context.is_valid else "None"
+                    logger.append_keys(trace_id=trace_id, span_id=span_id)
+                    logger.debug(f"[Tracing] Starting handler with trace_id: {trace_id}")
+                try:
+                    return handler_func(event, context)
+                finally:
+                    # This ensures traces are exported even if the handler raises an Exception.
+                    trace_provider = trace.get_tracer_provider()
+                    if isinstance(trace_provider, SDKTracerProvider):
+                        trace_provider.force_flush(timeout_millis=5000)
+                    flush_otel_logs()
 
-def traced_record(record):
-    """
-    Context Manager to create a span for processing a single SQS record
-    extracting trace context from the record's attributes.
-    """
-    parent_ctx = get_context_from_record(record)
-    tracer = trace.get_tracer(__name__)
+        return wrapper
+    return decorator
 
-    return tracer.start_as_current_span("process_record", context=parent_ctx)

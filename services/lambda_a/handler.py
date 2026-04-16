@@ -4,14 +4,12 @@ from opentelemetry import trace
 from common.otel import init_tracer
 from common.tracing import traced_lambda
 
-# from utils import send_message
-# from config import logger, sqs
 from services.lambda_a.utils import send_message
 from services.lambda_a.config import logger, sqs, sns
 
 tracer = init_tracer("lambda_a")
 
-@traced_lambda
+@traced_lambda(logger=logger)
 def handler(event, context):
     logger.debug(f"lambda_a triggered with event: {json.dumps(event)}")
 
@@ -20,6 +18,7 @@ def handler(event, context):
     target_arn = "arn:aws:sns:us-east-1:000000000000:my_topic"
 
     # Simulate processing the event and sending a message to the next service
+    # Business Logic: Retrieve IMEIs and tag the span
     device_imeis = ["351756051523999", "351756051523998"]
     current_span = trace.get_current_span()
     current_span.set_attribute("device_imeis", json.dumps(device_imeis))

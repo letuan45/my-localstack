@@ -14,43 +14,32 @@ def send_message(message: dict, queue_url: str):
     # Get context and inject traceparent into message attributes
     from common.inject import inject_trace
     carrier = inject_trace()
+    traceparent = carrier.get('traceparent')
 
-    attributes = {
-        'traceparent': {
-            'Type': 'String',
-            'Value': carrier.get('traceparent', '')
+    message_attributes = {}
+    if traceparent:
+        message_attributes['traceparent'] = {
+            'DataType': 'String',
+            'StringValue': traceparent
         }
-    }
 
     queue_type = get_queue_type(queue_url)
 
     if queue_type == 'sns':
-        _attributes = {}
-        for key, val in attributes.items():
-            _attributes[key] = {
-                'DataType': val['Type'],
-                'StringValue': val['Value']
-            }
-
         response = sns.publish(
             TopicArn=queue_url,
             Message=json.dumps(message),
-            MessageAttributes=_attributes
+            MessageAttributes=message_attributes
         )
-        logger.info(f"Event sent to SNS: {queue_url} - Trace: {carrier.get('traceparent')}")
+        logger.info(
+            f"Event sent to SNS: {queue_url} - Trace: {carrier.get('traceparent')}")
     else:
-        _attributes = {}
-        for key, val in attributes.items():
-            _attributes[key] = {
-                'DataType': val['Type'],
-                'StringValue': val['Value']
-            }
-
         response = sqs.send_message(
             QueueUrl=queue_url,
             MessageBody=json.dumps(message),
-            MessageAttributes=_attributes
+            MessageAttributes=message_attributes
         )
-        logger.info(f"Event sent to SQS: {queue_url} - Trace: {carrier.get('traceparent')}")
+        logger.info(
+            f"Event sent to SQS: {queue_url} - Trace: {carrier.get('traceparent')}")
 
     return response

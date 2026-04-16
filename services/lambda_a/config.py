@@ -1,17 +1,16 @@
+from aws_lambda_powertools import Logger
 import logging
 from common.log_handler import get_otel_log_handler
 import boto3
 import os
-from opentelemetry.sdk._logs import LoggingHandler
 
 
 SERVICE_NAME = "lambda_a"
 
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger = Logger(service=SERVICE_NAME)
+logger.setLevel("DEBUG")
 
-has_otel_handler = any(isinstance(h, LoggingHandler) for h in logger.handlers)
-
+has_otel_handler = any(type(h).__name__ == "LoggingHandler" for h in logger.handlers)
 if not has_otel_handler:
     logger.addHandler(get_otel_log_handler(SERVICE_NAME))
 
@@ -21,4 +20,3 @@ endpoint = f"http://{localstack_host}:4566"
 
 sqs = boto3.client("sqs", endpoint_url=endpoint, region_name="us-east-1")
 sns = boto3.client("sns", endpoint_url=endpoint, region_name="us-east-1")
-

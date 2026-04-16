@@ -1,14 +1,11 @@
-import logging
+from aws_lambda_powertools import Logger
 from common.log_handler import get_otel_log_handler
-from opentelemetry.sdk._logs import LoggingHandler
-
 
 SERVICE_NAME = "lambda_b"
 
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger = Logger(service=SERVICE_NAME)
+logger.setLevel("DEBUG")
 
-has_otel_handler = any(isinstance(h, LoggingHandler) for h in logger.handlers)
-
+has_otel_handler = any(type(h).__name__ == "LoggingHandler" for h in logger.handlers)
 if not has_otel_handler:
     logger.addHandler(get_otel_log_handler(SERVICE_NAME))
