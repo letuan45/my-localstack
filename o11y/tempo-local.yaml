@@ -6,13 +6,13 @@ distributor:
     otlp:
       protocols:
         grpc:
-          endpoint: 0.0.0.0:4317 # Nhận Trace từ OTel Collector qua gRPC
+          endpoint: 0.0.0.0:4317
         http:
           endpoint: 0.0.0.0:4318
 
 storage:
   trace:
-    backend: local # Lưu trace vào ổ đĩa cục bộ của container
+    backend: local
     local:
       path: /tmp/tempo/blocks
     wal:
