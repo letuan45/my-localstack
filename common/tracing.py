@@ -16,6 +16,9 @@ def extract_trace_context(record):
             traceparent = record['Sns'].get('MessageAttributes', {}).get('traceparent', {}).get('Value')
         elif 'messageAttributes' in record:
             traceparent = record.get("messageAttributes", {}).get("traceparent", {}).get("stringValue")
+            xcvxcv
+            xcvxcvxcv
+            xc
 
             if not traceparent and 'body' in record:
                 try:

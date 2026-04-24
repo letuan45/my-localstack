@@ -13,7 +13,6 @@ tracer = init_tracer("lambda_a")
 @traced_lambda(logger=logger)
 def handler(event, context):
     logger.debug(f"lambda_a triggered with event: {json.dumps(event)}")
-
     target_destination = event.get("target_destination", "arn:aws:sns:us-east-1:000000000000:my_topic")
     is_batch_test = event.get("simulate_batch", False)
 
