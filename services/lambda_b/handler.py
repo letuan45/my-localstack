@@ -55,9 +55,9 @@ def tag_root_span(records: list):
         payload = parse_payload(raw_msg)
 
         # Capture the first valid device_id as a flat string
-        d_id = payload.get('device_id')
-        if d_id and d_id != 'unknown_device' and not primary_device_id:
-            primary_device_id = d_id
+        p_device_id = payload.get('device_id')
+        if p_device_id and p_device_id != 'unknown_device' and not primary_device_id:
+            primary_device_id = p_device_id
 
         if imeis := payload.get('device_imeis'):
             all_imeis.extend(imeis)
@@ -83,8 +83,7 @@ def process_device_logic(payload: dict):
         item_span.set_attribute("action", action)
 
         try:
-            logger.debug(
-                f"Processing device {device_id} | IMEIs: {device_imeis}")
+            logger.debug(f"Processing device {device_id} | IMEIs: {device_imeis}")
 
             if device_id == 'DEV_002':
                 raise ValueError(f"Simulated error for device {device_id}")
