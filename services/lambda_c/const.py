@@ -1,0 +1,10 @@
+EVENT_SOURCE_SNS = "aws:sns"
+EVENT_SOURCE_SQS = "aws:sqs"
+
+HTTP_BAD_REQUEST = 400
+HTTP_OK = 200
+
+SIMULATED_ERROR_DEVICE_ID = "DEV_002"
+SNS_SUCCESS_BODY = "SNS Processed successfully"
+UNKNOWN_ACTION = "unknown"
+UNKNOWN_DEVICE_ID = "unknown_device"

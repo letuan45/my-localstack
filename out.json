@@ -1,1 +1,1 @@
-{"statusCode": 200, "body": "{\"message\": \"Dispatched successfully\", \"target\": \"http://localhost:4566/000000000000/my_queue\"}"}
+{"statusCode": 200, "body": "{\"message\": \"Dispatched successfully\", \"target\": \"arn:aws:sns:us-east-1:000000000000:my_topic\"}"}

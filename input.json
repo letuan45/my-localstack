@@ -1,1 +1,1 @@
-{"devices":[{"device_imeis":["111","222"],"device_id":"DEV_001"},{"device_imeis":["333"],"device_id":"DEV_002"},{"device_imeis":["444","555"],"device_id":"DEV_003"}],"target_destination":"http://localhost:4566/000000000000/my_queue","simulate_batch":true}
+{"device_id":"000001","tenant_id":"/prod","target_destination":"arn:aws:sns:us-east-1:000000000000:my_topic","device_imeis":["999999","888888"],"simulate_batch":false}

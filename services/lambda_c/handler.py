@@ -1,8 +1,26 @@
 import json
+from typing import Any
+
 from opentelemetry import trace
 from common.otel import init_tracer
 from common.tracing import traced_lambda
+from services.lambda_c.const import (
+    HTTP_BAD_REQUEST,
+    HTTP_OK,
+    SIMULATED_ERROR_DEVICE_ID,
+    SNS_SUCCESS_BODY,
+    UNKNOWN_ACTION,
+    UNKNOWN_DEVICE_ID,
+)
 from services.lambda_c.config import logger
+from services.lambda_c.utils import (
+    get_record_body,
+    is_sns_record,
+    is_sqs_record,
+    normalize_imeis,
+    parse_payload,
+    tag_root_span,
+)
 
 from aws_lambda_powertools.utilities.batch import (
     BatchProcessor,
@@ -15,67 +33,11 @@ tracer = init_tracer("lambda_c")
 processor = BatchProcessor(event_type=EventType.SQS)
 
 
-def parse_payload(raw_msg: str) -> dict:
-    """
-    Safely parses JSON, handling SNS envelopes and accidental double-serialization.
-    """
-    try:
-        payload = json.loads(raw_msg)
-
-        # Unwrap SNS Envelope if present
-        if isinstance(payload, dict) and payload.get('Type') == 'Notification':
-            payload = json.loads(payload.get('Message', '{}'))
-
-        # Unwrap double-serialized JSON strings
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-
-        return payload if isinstance(payload, dict) else {}
-    except (TypeError, json.JSONDecodeError) as e:
-        logger.warning(f"Failed to parse payload: {e}")
-        return {}
-
-
-def tag_root_span(records: list):
-    """
-    Aggressively extracts business data to tag the Root Span for Grafana visibility.
-    """
-    root_span = trace.get_current_span()
-    if not root_span or not root_span.is_recording():
-        return
-
-    primary_device_id = None
-    all_imeis = []
-
-    for record in records:
-        raw_msg = record.get('body') or record.get('Sns', {}).get('Message')
-        if not raw_msg:
-            continue
-
-        payload = parse_payload(raw_msg)
-
-        # Capture the first valid device_id as a flat string
-        d_id = payload.get('device_id')
-        if d_id and d_id != 'unknown_device' and not primary_device_id:
-            primary_device_id = d_id
-
-        if imeis := payload.get('device_imeis'):
-            all_imeis.extend(imeis)
-
-    # Set as a single string, exactly matching your requested format
-    if primary_device_id:
-        root_span.set_attribute("device_id", primary_device_id)
-
-    root_span.set_attribute("device_imeis", json.dumps(all_imeis))
-
-
-def process_device_logic(payload: dict):
-    """
-    Core business logic wrapped in a dedicated Child Span.
-    """
-    device_id = payload.get('device_id', 'unknown_device')
-    device_imeis = payload.get('device_imeis', [])
-    action = payload.get('action', 'unknown')
+def process_device_logic(payload: dict[str, Any]) -> None:
+    """Run device processing inside an item-level child span."""
+    device_id = payload.get('device_id', UNKNOWN_DEVICE_ID)
+    device_imeis = normalize_imeis(payload.get('device_imeis'))
+    action = payload.get('action', UNKNOWN_ACTION)
 
     with tracer.start_as_current_span(f"process_device:{device_id}") as item_span:
         item_span.set_attribute("device_id", device_id)
@@ -83,10 +45,9 @@ def process_device_logic(payload: dict):
         item_span.set_attribute("action", action)
 
         try:
-            logger.debug(
-                f"Processing device {device_id} | IMEIs: {device_imeis}")
+            logger.debug(f"Processing device {device_id} | IMEIs: {device_imeis}")
 
-            if device_id == 'DEV_002':
+            if device_id == SIMULATED_ERROR_DEVICE_ID:
                 raise ValueError(f"Simulated error for device {device_id}")
 
             logger.info(f"Successfully processed device: {device_id}")
@@ -95,35 +56,29 @@ def process_device_logic(payload: dict):
             logger.error(f"Failed to process device {device_id}: {e}")
             item_span.record_exception(e)
             item_span.set_status(trace.StatusCode.ERROR, str(e))
-            raise e
+            raise
 
 
-def sqs_record_handler(record: SQSRecord):
-    """
-    Adapter for SQS records (BatchProcessor uses SQSRecord objects).
-    """
+def sqs_record_handler(record: SQSRecord) -> None:
+    """Adapt Powertools SQS records to the device processor."""
     payload = parse_payload(record.body)
     process_device_logic(payload)
 
 
 @traced_lambda(logger=logger)
 def handler(event, context):
-    """
-    Main Lambda entry point. Handles Root Span tagging and Event Routing.
-    """
+    """Route supported event sources to the appropriate processor."""
     records = event.get('Records', [])
     if not records:
         logger.debug("Received empty event")
-        return {"statusCode": 200}
+        return {"statusCode": HTTP_OK}
 
-    # 1. Pre-process for tracing visibility
     tag_root_span(records)
 
     logger.debug(f"Processing {len(records)} records.")
     first_record = records[0]
 
-    # 2. Route based on Event Source
-    if first_record.get('eventSource') == 'aws:sqs':
+    if is_sqs_record(first_record):
         logger.info("Routing to SQS Batch Processor")
         return process_partial_response(
             event=event,
@@ -132,14 +87,13 @@ def handler(event, context):
             context=context
         )
 
-    elif first_record.get('EventSource') == 'aws:sns':
+    if is_sns_record(first_record):
         logger.info("Routing to SNS Direct Processor")
         for record in records:
-            raw_msg = record.get('Sns', {}).get('Message', '')
-            payload = parse_payload(raw_msg)
+            payload = parse_payload(get_record_body(record))
             process_device_logic(payload)
 
-        return {"statusCode": 200, "body": "SNS Processed successfully"}
+        return {"statusCode": HTTP_OK, "body": SNS_SUCCESS_BODY}
 
     logger.warning("Unrecognized event source structure")
-    return {"statusCode": 400}
+    return {"statusCode": HTTP_BAD_REQUEST}
