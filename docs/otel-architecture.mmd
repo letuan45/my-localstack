@@ -1,0 +1,75 @@
+graph TD
+    %% ============================================================
+    %% UPSTREAM & MESSAGING LAYER
+    %% ============================================================
+    subgraph UM["Upstream & Messaging"]
+        UPSTREAM["Upstream Applications"]:::impl
+        SNS["SNS Topic<br/>(Fan-Out)"]:::impl
+        SQS["SQS Queue<br/>(Buffered Delivery)"]:::impl
+
+        UPSTREAM -->|"Message Payload<br/>w/ trace context"| SNS
+        UPSTREAM -->|"Message Payload<br/>w/ trace context"| SQS
+    end
+
+    %% ============================================================
+    %% APPLICATION / COMPUTE LAYER
+    %% ============================================================
+    subgraph AC["Application / Compute Layer"]
+        direction TB
+
+        COMPUTE_A["Python Consumer Service<br/>(SQS Listener)"]:::impl
+        COMPUTE_B["Python Consumer Service<br/>(SNS Subscriber)"]:::impl
+        ECS_SVC["ECS Service<br/>(Sidecar Collector)"]:::fut
+        DB["Databases<br/>(Auto-Instrumented)"]:::fut
+
+        SQS -->|"Message Payload<br/>w/ Span Links"| COMPUTE_A
+        SNS -->|"SNS Notification<br/>w/ trace context"| COMPUTE_B
+    end
+
+    %% ============================================================
+    %% TELEMETRY INFRASTRUCTURE
+    %% ============================================================
+    subgraph TI["Telemetry Infrastructure"]
+        direction TB
+
+        COL_DEPLOY["OTel Collector<br/>(Daemon / Sidecar)"]:::impl
+        PROXY["Central OTel Proxy<br/>(Gateway / Load-Balancer)"]:::impl
+        SAMPLER["Tail-Based Sampler"]:::fut
+
+        COMPUTE_A -->|"OTLP/gRPC<br/>w/ Span Links"| COL_DEPLOY
+        COMPUTE_B -->|"OTLP/gRPC<br/>w/ trace context"| COL_DEPLOY
+        ECS_SVC -.->|"OTLP/gRPC"| COL_DEPLOY
+        DB -.->|"OTLP/gRPC"| COL_DEPLOY
+
+        COL_DEPLOY -->|"OTLP/gRPC<br/>(Batch Export)"| PROXY
+        PROXY -->|"Sampled Trace Stream"| SAMPLER
+    end
+
+    %% ============================================================
+    %% STORAGE BACKEND
+    %% ============================================================
+    subgraph SB["Storage Backend"]
+        direction TB
+
+        BACKEND_COL["Backend Collector<br/>(Fan-In / Routing)"]:::impl
+        CLICKHOUSE["ClickHouse<br/>(Long-Term Storage)"]:::fut
+        TEMPO["Tempo<br/>(Trace Storage)"]:::impl
+        LOKI["Loki<br/>(Log Aggregation)"]:::impl
+        GRAFANA["Grafana<br/>(Dashboards & Visualization)"]:::impl
+        JAEGER["Jaeger<br/>(Trace Viewer)"]:::impl
+
+        SAMPLER -->|"Routed Telemetry"| BACKEND_COL
+        BACKEND_COL -->|"Trace Data"| TEMPO
+        BACKEND_COL -->|"Log Data"| LOKI
+        BACKEND_COL -.->|"Long-Term Archive"| CLICKHOUSE
+        TEMPO -->|"Trace Queries"| GRAFANA
+        LOKI -->|"Log Queries"| GRAFANA
+        GRAFANA -->|"tracesToLogs"| LOKI
+        TEMPO -->|"Trace Queries"| JAEGER
+    end
+
+    %% ============================================================
+    %% STYLES
+    %% ============================================================
+    classDef impl fill:#1a5276,stroke:#1a5276,color:#fff,stroke-width:2px
+    classDef fut fill:#ffffff,stroke:#888,color:#888,stroke-width:2px,stroke-dasharray: 6 6
