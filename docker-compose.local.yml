@@ -10,52 +10,49 @@ services:
       - SERVICES=s3,dynamodb,lambda,sqs,sns,logs
       - AWS_DEFAULT_REGION=us-east-1
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - ADOT_LAYER_ENABLED=true
+      - LAMBDA_DOCKER_FLAGS=-e OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318 -e AWS_LAMBDA_EXEC_WRAPPER=
     volumes:
       - .:/var/task
       - "/var/run/docker.sock:/var/run/docker.sock"
       - "./localstack/init:/etc/localstack/init/ready.d"
 
-  jaeger:
-    image: jaegertracing/all-in-one:1.54
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.90.0
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./o11y/otel-collector.yaml:/etc/otel-collector.yaml
     ports:
-      - "16686:16686"
       - "4318:4318"
+      - "4317:4317"
+    depends_on:
+      - tempo
+      - loki
 
-  # otel-collector:
-  #   image: otel/opentelemetry-collector-contrib:0.90.0
-  #   command: ["--config=/etc/otel-collector.yaml"]
-  #   volumes:
-  #     - ./o11y/otel-collector.yaml:/etc/otel-collector.yaml
-  #   ports:
-  #     - "4318:4318"
-  #   depends_on:
-  #     - tempo
-  #     - loki
+  tempo:
+    image: grafana/tempo:2.3.0
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./o11y/tempo-local.yaml:/etc/tempo.yaml
+    ports:
+      - "3200"
 
-  # tempo:
-  #   image: grafana/tempo:2.3.0
-  #   command: [ "-config.file=/etc/tempo.yaml" ]
-  #   volumes:
-  #     - ./o11y/tempo-local.yaml:/etc/tempo.yaml
-  #   ports:
-  #     - "3200"
+  loki:
+    image: grafana/loki:2.9.2
+    command: "-config.file=/etc/loki/local-config.yaml"
+    ports:
+      - "3100"
 
-  # loki:
-  #   image: grafana/loki:2.9.2
-  #   command: -config.file=/etc/loki/local-config.yaml
-  #   ports:
-  #     - "3100"
-
-  # grafana:
-  #   image: grafana/grafana:10.2.2
-  #   environment:
-  #     - GF_AUTH_ANONYMOUS_ENABLED=true
-  #     - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-  #     - GF_AUTH_DISABLE_LOGIN_FORM=true
-  #   volumes:
-  #     - ./o11y/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - tempo
-  #     - loki
+  grafana:
+    image: grafana/grafana:10.2.2
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./o11y/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - loki

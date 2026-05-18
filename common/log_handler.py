@@ -10,7 +10,16 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
 
+ADOT_EXTENSION_ENDPOINT = "http://localhost:4318"
+
 _global_logger_provider = None
+
+
+def _build_endpoint(base: str, path: str) -> str:
+    if base.endswith("/"):
+        return f"{base.rstrip('/')}{path}"
+    return f"{base}{path}"
+
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -41,6 +50,8 @@ def get_otel_log_handler(service_name: str) -> logging.Handler:
     api_token = os.environ.get("GRAFANA_API_TOKEN", "")
     endpoint_base = os.environ.get("GRAFANA_OTLP_ENDPOINT", "")
 
+    local_otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+
     if instance_id and api_token:
         auth_string = f"{instance_id}:{api_token}"
         encoded_auth = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
@@ -48,7 +59,12 @@ def get_otel_log_handler(service_name: str) -> logging.Handler:
     else:
         headers = {}
 
-    log_endpoint = f"{endpoint_base}/v1/logs" if endpoint_base else "http://host.docker.internal:4318/v1/logs"
+    if endpoint_base:
+        log_endpoint = _build_endpoint(endpoint_base, "/v1/logs")
+    elif local_otlp_endpoint:
+        log_endpoint = _build_endpoint(local_otlp_endpoint, "/v1/logs")
+    else:
+        log_endpoint = _build_endpoint(ADOT_EXTENSION_ENDPOINT, "/v1/logs")
 
     resource = Resource.create({
         "service.name": service_name,

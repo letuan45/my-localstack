@@ -4,6 +4,8 @@ import json
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from common.log_handler import flush_otel_logs
+from common.otel import flush_otel_metrics
+from common.otel import flush_otel_metrics
 
 tracer = trace.get_tracer(__name__)
 
@@ -72,10 +74,11 @@ def traced_lambda(logger=None):
                 try:
                     return handler_func(event, context)
                 finally:
-                    # This ensures traces are exported even if the handler raises an Exception.
+                    # This ensures traces and metrics are exported even if the handler raises an Exception.
                     trace_provider = trace.get_tracer_provider()
                     if isinstance(trace_provider, SDKTracerProvider):
                         trace_provider.force_flush(timeout_millis=5000)
+                    flush_otel_metrics(timeout_millis=5000)
                     flush_otel_logs()
 
         return wrapper

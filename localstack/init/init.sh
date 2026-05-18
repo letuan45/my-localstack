@@ -26,7 +26,20 @@ echo "Creating SNS Topic..."
 TOPIC_ARN=$(awslocal sns create-topic --name my_topic --query 'TopicArn' --output text)
 
 # =======================
-# 3. COMMON SETUP & BUILD LAMBDAS
+# 3. ADOT LAMBDA LAYER
+# =======================
+# In production AWS, this ARN provides the ADOT Collector Extension inside the Lambda runtime.
+# The extension listens on localhost:4318 and forwards telemetry to the centralized OTEL gateway.
+# LocalStack Community Edition does not support fetching shared layers from AWS, so the layer
+# is only attached when ADOT_LAYER_ENABLED=true (set in docker-compose.local.yml for local dev).
+# In cloud mode (docker-compose.cloud.yml), telemetry is exported directly to Grafana Cloud
+# via the OTEL SDK, so the ADOT extension layer is not required.
+ADOT_LAYER_ARN="arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-32-0:1"
+ADOT_LAYER_ENABLED="${ADOT_LAYER_ENABLED:-false}"
+echo "ADOT Lambda Layer ARN: $ADOT_LAYER_ARN (enabled=$ADOT_LAYER_ENABLED)"
+
+# =======================
+# 4. COMMON SETUP & BUILD LAMBDAS
 # =======================
 touch common/__init__.py
 touch services/__init__.py
@@ -56,12 +69,17 @@ build_lambda() {
     zip -rq /tmp/$LAMBDA_NAME.zip .
 
     echo "Creating $LAMBDA_NAME..."
+    LAYER_FLAGS=()
+    if [ "$ADOT_LAYER_ENABLED" = "true" ]; then
+        LAYER_FLAGS=(--layers "$ADOT_LAYER_ARN")
+    fi
     awslocal lambda create-function \
       --function-name $LAMBDA_NAME \
       --runtime python3.10 \
       --handler services.$LAMBDA_NAME.handler.handler \
       --zip-file fileb:///tmp/$LAMBDA_NAME.zip \
       --role arn:aws:iam::000000000000:role/lambda-role \
+      "${LAYER_FLAGS[@]}" \
       --environment "Variables={PYTHONPATH=.}" > /dev/null
 
     cd /var/task
@@ -72,7 +90,7 @@ build_lambda "lambda_b"
 build_lambda "lambda_c"
 
 # =======================
-# 4. WIRING IT ALL TOGETHER
+# 5. WIRING IT ALL TOGETHER
 # =======================
 
 # --- A. SQS to Lambda B Mapping ---

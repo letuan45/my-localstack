@@ -3,17 +3,62 @@ receivers:
     protocols:
       http:
         endpoint: "0.0.0.0:4318"
+      grpc:
+        endpoint: "0.0.0.0:4317"
 
 processors:
   batch:
-    send_batch_size: 100
+    send_batch_size: 512
     timeout: 1s
 
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 100
+    policies:
+      - name: errors-policy
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: high-latency-policy
+        type: latency
+        latency:
+          threshold_ms: 1000
+      - name: retry-policy
+        type: string_attribute
+        string_attribute:
+          key: messaging.batch.message_count
+          enabled_regex_matching: true
+          values: ["[1-9]"]
+      - name: health-sample-policy
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+
+  attributes/drop_unused:
+    actions:
+      - key: deployment.environment
+        action: delete
+
 exporters:
-  otlp:
+  otlp/tempo:
     endpoint: "tempo:4317"
     tls:
       insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
 
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
@@ -25,9 +70,12 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp]
+      processors: [memory_limiter, batch, tail_sampling]
+      exporters: [otlp/tempo]
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [loki]
+  telemetry:
+    metrics:
+      address: "0.0.0.0:8888"

@@ -10,7 +10,7 @@ services:
       - SERVICES=s3,dynamodb,lambda,sqs,sns,logs
       - AWS_DEFAULT_REGION=us-east-1
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - LAMBDA_DOCKER_FLAGS=-e GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID} -e GRAFANA_API_TOKEN=${GRAFANA_API_TOKEN} -e GRAFANA_OTLP_ENDPOINT=${GRAFANA_OTLP_ENDPOINT}
+      - LAMBDA_DOCKER_FLAGS=-e GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID} -e GRAFANA_API_TOKEN=${GRAFANA_API_TOKEN} -e GRAFANA_OTLP_ENDPOINT=${GRAFANA_OTLP_ENDPOINT} -e AWS_LAMBDA_EXEC_WRAPPER=
     volumes:
       - .:/var/task
       - "/var/run/docker.sock:/var/run/docker.sock"

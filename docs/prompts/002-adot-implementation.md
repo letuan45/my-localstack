@@ -1,56 +1,45 @@
 # Enterprise Observability Migration using ADOT Layer & ADOT Collector
 
-Act as an expert Enterprise Software Engineer. Implement apply ADOT to my project, generate your plan and save with path docs/adot-architecture.md
+Read docs/architecture.md to understand current project architecture, then read adot-architecture.md to understand how AWS ADOT will be migrated and combined with current project. Then read the code base, your task is implement ADOT to current project, update the code and infrastructure code if needed.
 
-Read docs/architecture.md to undertand the codebase concept
+---
 
-Objective: I want to refactor this entire system to adopt an Enterprise-grade Observability.Architecture using AWS Distro for OpenTelemetry (ADOT). The goal is to reduce boilerplate code, leverage ADOT's auto-instrumentation, and isolate telemetry traffic by introducing a centralized ADOT Collector. Crucially, the current Span structure, Parent-Child trace relationships, and Business Logic must remain intact.
+The system intentionally avoids:
 
-Detailed Technical Requirements:
+```text
+AWS_LAMBDA_EXEC_WRAPPER
+```
 
-## 1. Infrastructure & Architecture Setup (ADOT Layer + ADOT Collector):
+because full auto-instrumentation creates major problems in asynchronous event-driven systems:
 
-Attach the ADOT Lambda Layer (Python version) to all 3 functions (lambda_a, lambda_b, lambda_c) for auto-instrumentation.
+- broken SQS trace continuity
+- incomplete batch visibility
+- missing span links
+- poor business span modeling
+- limited control over trace lifecycle
 
-Introduce a centralized ADOT Collector running as a separate service (simulated in docker-compose.local.yml alongside LocalStack, representing a future ECS Fargate deployment).
+Instead, this architecture combines:
 
-Configure the Lambdas' Environment Variables (e.g., AWS_LAMBDA_EXEC_WRAPPER, OTEL_EXPORTER_OTLP_ENDPOINT) so the ADOT Layer inside Lambda exports telemetry NOT directly to the backend, but to the internal ADOT Collector.
+| Component | Responsibility |
+|---|---|
+| Manual instrumentation | business tracing |
+| Manual propagation | W3C context continuity |
+| Span Links | SQS batch relationships |
+| ADOT Layer | collector runtime |
+| ADOT Collector | telemetry buffering/export |
+| Gateway Collector | sampling/routing/governance |
 
-Configure the standalone ADOT Collector (otel-collector-config.yaml) to receive this OTLP data, optionally perform tail-based sampling/batching, and then export it to the final backend (Jaeger/Grafana Cloud).
+# Mandatory Technical Constraints (THE "RULES")
 
-## 2. Refactoring the Producer (lambda_a):
+## DO NOT (Strict Prohibitions)
+- DO NOT use AWS_LAMBDA_EXEC_WRAPPER. We are intentionally avoiding ADOT Auto-Instrumentation to maintain control over SQS batch semantics.
+- DO NOT remove existing Span Links logic. This is required for many-to-one SQS batch tracing.
+- DO NOT use the AWS X-Ray SDK. All telemetry must be OTLP-native.
+- DO NOT let the AI simplify the common/otel.py module to the point where force_flush() is removed.
 
-Remove the manual OTel initialization code (common/otel.py).
-
-Since the ADOT Layer automatically wraps the Lambda handler, how do I access the auto-generated current_span to append custom business attributes (like device_id)?
-
-Does ADOT automatically inject the W3C Trace Context into SQS/SNS Message Attributes when making boto3 calls? If yes, explain the required environment variables/config. If no, provide the manual injection code compatible with ADOT.
-
-I strictly need to retain a specific Child Span named send_message with the PRODUCER span kind.
-
-## 3. Refactoring the Consumers (lambda_b, lambda_c):
-
-SQS Batch Processing (Critical): How does ADOT wrap a Lambda triggered by SQS? How does ADOT extract the traceparent from multiple SQS records in a batch and create Span Links attached to the Root Span?
-
-I am using process_partial_response from AWS Lambda Powertools. How do I create Internal Spans for each process_device:{device_id} inside the record processing loop while maintaining the correct Parent-Child relationship with ADOT's auto-generated Root Span?
-
-SNS Envelope Problem: When an SNS message is routed to SQS (Fanout), does ADOT automatically unwrap the Notification envelope to find the traceparent inside? If not, provide the manual extractor code compatible with ADOT.
-
-
-## 4. Expected Output:
-
-Provide a step-by-step implementation guide.
-
-Provide fully refactored code snippets for:
-
-docker-compose.local.yml (Adding the ADOT Collector).
-
-otel-collector-config.yaml (The Collector's pipeline configuration).
-
-LocalStack init script modifications for attaching the ADOT Layer.
-
-The refactored lambda_a/handler.py and lambda_a/utils.py.
-
-The refactored lambda_b/handler.py (handling both SQS Batching and SNS un-enveloping).
-
-Clearly differentiate between what ADOT will handle automatically (Auto-instrumentation) versus what I will still need to handle manually to maintain my business logic tracing.
+# DO (Mandatory Requirements):
+- Infrastructure: Attach the ADOT Lambda Layer in Terraform/LocalStack, but leave the instrumentation to the Python code.
+- SDK Initialization: Refactor common/otel.py to export to http://localhost:4318 via OTLP HTTP/gRPC (the local ADOT Extension endpoint).
+- Trace Continuity: Preserve the manual extraction of traceparent from SQS/SNS messageAttributes.
+- Log Correlation: Ensure AWS Lambda Powertools continues to receive the trace_id and span_id from the manual OTel Span Context.
+- Batch Strategy: Keep the BatchProcessor and process_partial_response to handle SQS partial failures.
